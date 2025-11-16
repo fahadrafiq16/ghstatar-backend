@@ -121,6 +121,33 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Get distinct subject names (with optional filters)
+router.get('/names', async (req, res) => {
+  try {
+    const { school, class: studentClass, year, semester } = req.query;
+
+    const filter = {};
+    if (school) filter.school = school;
+    if (studentClass) filter.class = parseInt(studentClass);
+    if (year) filter.year = year;
+    if (semester) filter.semester = semester;
+
+    const names = await Subject.distinct('subjectName', filter);
+    names.sort((a, b) => a.localeCompare(b));
+
+    res.json({
+      success: true,
+      count: names.length,
+      data: names
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Update subject
 router.put('/:id', async (req, res) => {
   try {
