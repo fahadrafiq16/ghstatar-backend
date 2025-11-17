@@ -73,7 +73,7 @@ router.get('/', async (req, res) => {
     if (year) filter.year = year;
     if (semester) filter.semester = semester;
 
-    const students = await Student.find(filter).sort({ createdAt: -1 });
+    const students = await Student.find(filter).sort({ createdAt: 1, admissionNumber: 1 });
     res.json({ 
       success: true, 
       count: students.length,

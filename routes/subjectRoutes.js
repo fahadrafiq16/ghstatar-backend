@@ -2,10 +2,33 @@ const express = require('express');
 const router = express.Router();
 const Subject = require('../models/Subject');
 
+const gpsSchoolsList = ['GPS Dotar', 'GPS Tatar Syedan', 'GPS Tatar Bala', 'GPS Tatar Banda'];
+
+const resequenceSubjects = async ({ schools, studentClass, year, semester }) => {
+  const uniqueSchools = [...new Set(schools)];
+  for (const school of uniqueSchools) {
+    const subjects = await Subject.find({
+      school,
+      class: studentClass,
+      year,
+      semester
+    }).sort({ subjectNumber: 1, _id: 1 });
+
+    for (let i = 0; i < subjects.length; i += 1) {
+      const desiredNumber = i + 1;
+      if (subjects[i].subjectNumber !== desiredNumber) {
+        subjects[i].subjectNumber = desiredNumber;
+        await subjects[i].save();
+      }
+    }
+  }
+};
+
 // Add new subject
 router.post('/', async (req, res) => {
   try {
     const { subjectName, totalMarks, subjectNumber, school, class: studentClass, year, semester } = req.body;
+    const classNumber = parseInt(studentClass);
 
     // Validation
     if (!subjectName || !totalMarks || !subjectNumber || !school || !studentClass || !year || !semester) {
@@ -16,15 +39,14 @@ router.post('/', async (req, res) => {
     }
 
     // Validate class based on school
-    const gpsSchools = ['GPS Dotar', 'GPS Tatar Syedan', 'GPS Tatar Bala', 'GPS Tatar Banda'];
-    if (gpsSchools.includes(school) && studentClass !== 5) {
+    if (gpsSchoolsList.includes(school) && classNumber !== 5) {
       return res.status(400).json({ 
         success: false, 
         error: `${school} only has class 5` 
       });
     }
 
-    if (school === 'GHS Tatar' && (studentClass < 6 || studentClass > 8)) {
+    if (school === 'GHS Tatar' && (classNumber < 6 || classNumber > 8)) {
       return res.status(400).json({ 
         success: false, 
         error: 'GHS Tatar only has classes 6, 7, and 8' 
@@ -32,8 +54,24 @@ router.post('/', async (req, res) => {
     }
 
     // If it's a GPS school and class 5, also add to other GPS schools
-    const gpsSchoolsList = ['GPS Dotar', 'GPS Tatar Syedan', 'GPS Tatar Bala', 'GPS Tatar Banda'];
-    const isGPSClass5 = gpsSchoolsList.includes(school) && studentClass === 5;
+    const isGPSClass5 = gpsSchoolsList.includes(school) && classNumber === 5;
+    const targetSchools = isGPSClass5 ? gpsSchoolsList : [school];
+
+    await resequenceSubjects({
+      schools: targetSchools,
+      studentClass: classNumber,
+      year,
+      semester
+    });
+
+    const referenceSchool = targetSchools[0];
+    const existingCount = await Subject.countDocuments({
+      school: referenceSchool,
+      class: classNumber,
+      year,
+      semester
+    });
+    const nextSubjectNumber = existingCount + 1;
 
     if (isGPSClass5) {
       // Add subject to all GPS schools
@@ -43,9 +81,9 @@ router.post('/', async (req, res) => {
           const subject = new Subject({
             subjectName,
             totalMarks: parseInt(totalMarks),
-            subjectNumber: parseInt(subjectNumber),
+            subjectNumber: nextSubjectNumber,
             school: gpsSchool,
-            class: studentClass,
+            class: classNumber,
             year,
             semester
           });
@@ -68,9 +106,9 @@ router.post('/', async (req, res) => {
       const subject = new Subject({
         subjectName,
         totalMarks: parseInt(totalMarks),
-        subjectNumber: parseInt(subjectNumber),
+        subjectNumber: nextSubjectNumber,
         school,
-        class: studentClass,
+        class: classNumber,
         year,
         semester
       });
@@ -217,12 +255,11 @@ router.delete('/:id', async (req, res) => {
     }
 
     // If it's a GPS school class 5, delete from all GPS schools
-    const gpsSchools = ['GPS Dotar', 'GPS Tatar Syedan', 'GPS Tatar Bala', 'GPS Tatar Banda'];
-    const isGPSClass5 = gpsSchools.includes(subject.school) && subject.class === 5;
+    const isGPSClass5 = gpsSchoolsList.includes(subject.school) && subject.class === 5;
 
     if (isGPSClass5) {
       await Subject.deleteMany({
-        school: { $in: gpsSchools },
+        school: { $in: gpsSchoolsList },
         class: 5,
         year: subject.year,
         semester: subject.semester,
@@ -231,6 +268,13 @@ router.delete('/:id', async (req, res) => {
     } else {
       await Subject.findByIdAndDelete(req.params.id);
     }
+
+    await resequenceSubjects({
+      schools: isGPSClass5 ? gpsSchoolsList : [subject.school],
+      studentClass: subject.class,
+      year: subject.year,
+      semester: subject.semester
+    });
 
     res.json({ 
       success: true, 
