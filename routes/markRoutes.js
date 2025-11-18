@@ -141,13 +141,13 @@ router.get('/subject-class', async (req, res) => {
       });
     }
 
-    // Get all students for this class
+    // Get all students for this class (same order as Add Students: oldest first, then by admission number)
     const students = await Student.find({
       school,
       class: parseInt(studentClass),
       year,
       semester
-    }).sort({ admissionNumber: 1 });
+    }).sort({ createdAt: 1, admissionNumber: 1 });
 
     // Get existing marks for this subject
     const marks = await Mark.find({
