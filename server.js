@@ -20,7 +20,43 @@ mongoose
 const studentRoutes = require('./routes/studentRoutes');
 const subjectRoutes = require('./routes/subjectRoutes');
 const markRoutes = require('./routes/markRoutes');
+const authRoutes = require('./routes/authRoutes');
 
+// Simple JWT auth middleware to protect API routes
+const jwt = require('jsonwebtoken');
+const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-me';
+
+const authMiddleware = (req, res, next) => {
+  // Allow unauthenticated access to auth routes and health checks
+  if (
+    req.path.startsWith('/api/auth') ||
+    req.path === '/' ||
+    req.path === '/api/health'
+  ) {
+    return next();
+  }
+
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
+
+  if (!token) {
+    return res.status(401).json({ success: false, error: 'No token provided' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(401).json({ success: false, error: 'Invalid or expired token' });
+  }
+};
+
+// Public auth routes
+app.use('/api/auth', authRoutes);
+
+// Protected routes
+app.use(authMiddleware);
 app.use('/api/students', studentRoutes);
 app.use('/api/subjects', subjectRoutes);
 app.use('/api/marks', markRoutes);
